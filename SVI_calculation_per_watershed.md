@@ -2,134 +2,134 @@
 
 This repository documents the process used to derive a population-weighted Social Vulnerability Index (SVI) for wastewater sewersheds in Rhode Island using the CDC/ATSDR SVI 2022 tract-level data.
 
-The goal was to translate tract-level SVI scores into a meaningful, defensible sewershed-level vulnerability metric that reflects the social conditions of the people served by each wastewater catchment area.
+The goal was to translate tract-level SVI metrics into a meaningful, defensible sewershed-level vulnerability indicator that reflects the social conditions of the population served by each wastewater catchment area.
 
 📂 Data Sources
 Dataset	Source	Notes
-CDC/ATSDR SVI (2022)	CDC/ATSDR	Tract-level RPL_THEMES, population (E_TOTPOP), and area (AREA_SQMI)
+CDC/ATSDR SVI (2022)	Centers for Disease Control and Prevention	Tract-level RPL_THEMES (percentile rank), SPL_THEMES (sum of theme rankings), population (E_TOTPOP), and area (AREA_SQMI)
 Sewershed boundaries	Local utility / agency	Wastewater treatment plant catchments
 Coordinate system	NAD 1983 (2011) StatePlane Rhode Island FIPS 3800 (US Feet)	Used for all spatial processing
 🔧 Processing Workflow
 1) Data Preparation
 
-Downloaded the CDC/ATSDR SVI 2022 tract dataset for Rhode Island.
+The CDC/ATSDR SVI 2022 census tract dataset for Rhode Island was downloaded and prepared alongside sewershed boundary polygons representing wastewater service areas.
 
-Assembled wastewater sewershed polygons representing service catchment areas.
+The following key variables were retained:
 
-Retained key SVI fields:
-
-FIPS — tract identifier
-
+FIPS — census tract identifier
 RPL_THEMES — overall SVI percentile rank (0–1)
-
+SPL_THEMES — sum of theme-specific rankings (non-percentile; typically ranges ~0–16)
 E_TOTPOP — estimated tract population
-
 AREA_SQMI — tract area
-
 2) Coordinate System Standardization
 
-To ensure accurate area calculations, both layers were projected to:
+Both datasets were projected to:
 
 NAD 1983 (2011) StatePlane Rhode Island FIPS 3800 (US Feet)
 
-
-This projection minimizes spatial distortion across Rhode Island and supports valid area-based calculations.
+This minimizes spatial distortion and ensures accurate area-based calculations.
 
 3) Spatial Overlay (Intersect)
 
 An Intersect operation was performed between:
 
 SVI census tracts
-
 Sewershed polygons
 
-The result was a new feature class where each record represents the portion of a tract that lies within a specific sewershed.
+The output represents the portion of each tract contained within each sewershed.
 
 4) Calculate Overlap Area
 
-For each intersected fragment, overlap area was computed in square survey miles:
+For each intersected feature:
 
 AREA_OVLP_SQMI = shape_area (sq ft) / 27,878,400
 
+This converts area to square miles, consistent with CDC SVI data.
 
-This unit matches the tract area units provided in the SVI dataset.
+5) Allocate Population to Overlap Areas
 
-5) Allocate Population to Overlap Pieces
-
-Assuming uniform population distribution within each tract, population was proportionally allocated to each fragment:
+Population was proportionally allocated assuming uniform distribution within each tract:
 
 POP_ALLOC = E_TOTPOP × (AREA_OVLP_SQMI / AREA_SQMI)
 
+This estimates the number of residents from each tract within each sewershed.
 
-This estimates how many people from each tract reside within each sewershed.
-
-6) Compute Weighted SVI Contribution
-
-Each overlap fragment’s contribution to sewershed vulnerability was calculated as:
-
+6) Compute Weighted SVI Contributions
+Overall Percentile-Based SVI (Primary Metric)
 W_RPL = POP_ALLOC × RPL_THEMES
-
-
-This represents the “vulnerability carried by people” in each fragment.
-
+Summed Vulnerability Score (SPL-Based Metric)
+W_SPL = POP_ALLOC × SPL_THEMES
 7) Aggregate to Sewershed Level
 
-Using Summary Statistics, values were summed by sewershed ID:
+Using summary statistics grouped by sewershed:
 
 SUM_POP_ALLOC = Σ POP_ALLOC
+SUM_W_RPL     = Σ W_RPL
+SUM_W_SPL     = Σ W_SPL
 
-SUM_W_RPL = Σ W_RPL
-
-Final sewershed SVI percentile was computed as:
+Final sewershed-level metrics:
 
 RPL_SEW = SUM_W_RPL / SUM_POP_ALLOC
+SPL_SEW = SUM_W_SPL / SUM_POP_ALLOC
+8) Optional Normalization of SPL
 
+Because SPL_THEMES is not a percentile, it may be normalized for interpretability:
 
-This yields a population-weighted SVI score (0–1) for each sewershed.
+SPL_SEW_NORM = SPL_SEW / max(SPL_SEW)
 
-8) Join Results Back to Sewersheds
+This rescales SPL values to a 0–1 range, enabling comparison with percentile-based metrics.
 
-The summarized table was joined back to the original sewershed polygons using a common sewershed ID, enabling:
+9) Join Results Back to Sewersheds
+
+Aggregated results were joined back to the original sewershed polygons using a common ID, enabling:
 
 Mapping
-
 Visualization
-
 Reporting
+Spatial analysis
+10) Quality Control (Population Validation)
 
-Further analysis
-
-9) Quality Control (Population Check)
-
-To assess the validity of population allocation, estimated population (SUM_POP_ALLOC) was compared to a provided sewershed population (pop_seward).
-
-Percent error was calculated as:
+Estimated population totals were compared to known sewershed populations:
 
 PCT_ERROR = ((SUM_POP_ALLOC − pop_seward) / pop_seward) × 100
 
-
 This step helps identify:
 
-boundary mismatches
-
-problematic tracts
-
-areas where uniform population assumptions may break down
-
+Boundary misalignment
+Data inconsistencies
+Limitations of the uniform population assumption
 ✅ Interpretation of Results
-
+RPL-Based Metric (Recommended)
 RPL_SEW ≈ 0 → very low social vulnerability
-
 RPL_SEW ≈ 1 → very high social vulnerability
 
-Values represent national percentile ranks based on CDC SVI.
-
-Example language for users:
+Example:
 
 “A sewershed with RPL_SEW = 0.72 serves a population more socially vulnerable than approximately 72% of U.S. communities.”
 
+SPL-Based Metric (Supplementary)
+SPL_SEW reflects the aggregate magnitude of vulnerability
+Not a percentile and should not be interpreted as a rank
+Higher values indicate greater cumulative vulnerability burden
+
+If normalized:
+
+SPL_SEW_NORM (0–1) provides a relative comparison scale
+⚠️ Key Methodological Notes
+RPL_THEMES is the preferred metric for reporting because it represents a true percentile ranking
+SPL_THEMES is a composite score, useful for understanding magnitude but not relative rank
+These measures are not interchangeable and should be interpreted accordingly
 ⚠️ Limitations
+Population allocation assumes uniform distribution within census tracts
+Tracts with missing values (e.g., -999) were excluded
+Sewer infrastructure boundaries may not perfectly align with census geography
+SPL normalization depends on dataset-specific ranges
+🧾 Summary
 
-Population allocation assumes uniform distribution within tracts.
+This methodology produces a population-weighted, spatially explicit measure of social vulnerability at the sewershed scale, enabling:
 
-Tracts with RPL_THEMES = -999 were treated as No Data and excluded.
+Public health prioritization
+Infrastructure planning
+Environmental justice analysis
+
+The use of both RPL (percentile) and SPL (magnitude) metrics provides complementary perspectives on community vulnerability.
